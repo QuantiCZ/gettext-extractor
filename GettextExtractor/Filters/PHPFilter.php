@@ -13,7 +13,16 @@
  * Filter to fetch gettext phrases from PHP functions
  * @author Ondřej Vodáček
  */
-class GettextExtractor_Filters_PHPFilter extends GettextExtractor_Filters_AFilter implements GettextExtractor_Filters_IFilter, PHPParser_NodeVisitor {
+use PhpParser\Node;
+use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Name;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor;
+use PhpParser\ParserFactory;
+
+class GettextExtractor_Filters_PHPFilter extends GettextExtractor_Filters_AFilter implements GettextExtractor_Filters_IFilter, NodeVisitor {
 
 	/** @var array */
 	private $data;
@@ -37,9 +46,9 @@ class GettextExtractor_Filters_PHPFilter extends GettextExtractor_Filters_AFilte
 	 */
 	public function extract($file) {
 		$this->data = array();
-		$parser = new PHPParser_Parser(new PHPParser_Lexer());
-		$stmts = $parser->parse(file_get_contents($file));
-		$traverser = new PHPParser_NodeTraverser();
+		$parser = (new ParserFactory)->create(ParserFactory::PREFER_PHP5);
+		$stmts = $parser->parse(file_get_contents($file));;
+		$traverser = new NodeTraverser;
 		$traverser->addVisitor($this);
 		$traverser->traverse($stmts);
 		$data = $this->data;
@@ -47,11 +56,11 @@ class GettextExtractor_Filters_PHPFilter extends GettextExtractor_Filters_AFilte
 		return $data;
 	}
 
-	public function enterNode(PHPParser_Node $node) {
+	public function enterNode(Node $node) {
 		$name = null;
-		if (($node instanceof PHPParser_Node_Expr_MethodCall || $node instanceof PHPParser_Node_Expr_StaticCall) && is_string($node->name)) {
+		if (($node instanceof MethodCall || $node instanceof StaticCall) && is_string($node->name)) {
 			$name = $node->name;
-		} elseif ($node instanceof PHPParser_Node_Expr_FuncCall && $node->name instanceof PHPParser_Node_Name) {
+		} elseif ($node instanceof FuncCall && $node->name instanceof Name) {
 			$parts = $node->name->parts;
 			$name = array_pop($parts);
 		} else {
@@ -65,7 +74,7 @@ class GettextExtractor_Filters_PHPFilter extends GettextExtractor_Filters_AFilte
 		}
 	}
 
-	private function processFunction(array $definition, PHPParser_Node $node) {
+	private function processFunction(array $definition, Node $node) {
 		$message = array(
 			GettextExtractor_Extractor::LINE => $node->getLine()
 		);
@@ -74,11 +83,11 @@ class GettextExtractor_Filters_PHPFilter extends GettextExtractor_Filters_AFilte
 				return;
 			}
 			$arg = $node->args[$position - 1]->value;
-			if ($arg instanceof PHPParser_Node_Scalar_String) {
+			if ($arg instanceof Node\Scalar\String_) {
 				$message[$type] = $arg->value;
-			} elseif ($arg instanceof PHPParser_Node_Expr_Array) {
+			} elseif ($arg instanceof Node\Expr\Array_) {
 				foreach ($arg->items as $item) {
-					if ($item->value instanceof PHPParser_Node_Scalar_String) {
+					if ($item->value instanceof Node\Scalar\String_) {
 						$message[$type][] = $item->value->value;
 					}
 				}
@@ -108,6 +117,6 @@ class GettextExtractor_Filters_PHPFilter extends GettextExtractor_Filters_AFilte
 	public function beforeTraverse(array $nodes) {
 	}
 
-	public function leaveNode(PHPParser_Node $node) {
+	public function leaveNode(Node $node) {
 	}
 }
